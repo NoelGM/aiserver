@@ -5,7 +5,7 @@
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WEB_DIR="$ROOT/src/web"
+WEB_DIR="$ROOT/web"
 IMAGE_DIR="$ROOT/src"
 IMAGE_PYTHON="$ROOT/.venv/bin/python"
 MODEL="mlx-community/gpt-oss-20b-OptiQ-4bit"
