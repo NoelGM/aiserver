@@ -1,14 +1,20 @@
 import base64
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+from uuid import uuid4
 
 HOST = "0.0.0.0"
 PORT = 8090
+ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = ROOT / "data" / "images"
+INPUT_DIR = DATA_DIR / "inputs"
+OUTPUT_DIR = DATA_DIR / "outputs"
 
 BIN_DIR = Path(sys.executable).parent
 GENERATE_CMD = BIN_DIR / "mflux-generate-flux2"
@@ -58,8 +64,9 @@ class ImageHandler(BaseHTTPRequestHandler):
                 raise ValueError("Please enter a prompt.")
 
             steps = max(1, min(int(data.get("steps", 4)), 50))
+            request_id = uuid4().hex
 
-            with tempfile.TemporaryDirectory(prefix="mflux_") as temp:
+            with tempfile.TemporaryDirectory(prefix="mflux_", dir=DATA_DIR) as temp:
                 workdir = Path(temp)
                 output_path = workdir / "output.png"
 
@@ -93,6 +100,7 @@ class ImageHandler(BaseHTTPRequestHandler):
 
                     input_path = workdir / "input.png"
                     input_path.write_bytes(base64.b64decode(image_data))
+                    shutil.copy2(input_path, INPUT_DIR / f"{request_id}.png")
 
                     command = [
                         str(EDIT_CMD),
@@ -135,7 +143,9 @@ class ImageHandler(BaseHTTPRequestHandler):
                     })
                     return
 
-                image_bytes = output_path.read_bytes()
+                saved_output = OUTPUT_DIR / f"{request_id}.png"
+                shutil.copy2(output_path, saved_output)
+                image_bytes = saved_output.read_bytes()
                 self.send_response(200)
                 self.send_header("Content-Type", "image/png")
                 self.send_header("Content-Length", str(len(image_bytes)))
@@ -153,15 +163,22 @@ class ImageHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         print("%s - %s" % (self.address_string(), format % args))
 
-if not GENERATE_CMD.exists() or not EDIT_CMD.exists():
-    raise SystemExit(
-        f"MFLUX commands not found in {BIN_DIR}. Install them with: "
-        f"{sys.executable} -m pip install -r "
-        f"{Path(__file__).with_name('requirements.txt')}"
-    )
+def main():
+    if not GENERATE_CMD.exists() or not EDIT_CMD.exists():
+        raise SystemExit(
+            f"MFLUX commands not found in {BIN_DIR}. Install them with: "
+            f"{sys.executable} -m pip install -r {ROOT / 'requirements.txt'}"
+        )
 
-print(f"Starting image server on {HOST}:{PORT}")
-print(f"Generate command: {GENERATE_CMD}")
-print(f"Edit command: {EDIT_CMD}")
+    INPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Starting image server on {HOST}:{PORT}")
+    print(f"Generate command: {GENERATE_CMD}")
+    print(f"Edit command: {EDIT_CMD}")
+    print(f"Image data: {DATA_DIR}")
 
-HTTPServer((HOST, PORT), ImageHandler).serve_forever()
+    HTTPServer((HOST, PORT), ImageHandler).serve_forever()
+
+
+if __name__ == "__main__":
+    main()

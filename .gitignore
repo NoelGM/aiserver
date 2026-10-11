@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+logs/*.log
+data/images/inputs/*
+data/images/outputs/*
+!data/images/inputs/.gitkeep
+!data/images/outputs/.gitkeep
+!data/images/outputs/server_test.png
+!data/images/outputs/toledo_1024.png
+!data/images/outputs/toledo_test.png

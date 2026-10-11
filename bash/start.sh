@@ -4,17 +4,17 @@
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-WEB_DIR="$ROOT/web"
-IMAGE_DIR="$ROOT/image"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+WEB_DIR="$ROOT/src/web"
+IMAGE_DIR="$ROOT/src"
 IMAGE_PYTHON="$ROOT/.venv/bin/python"
 MODEL="mlx-community/gpt-oss-20b-OptiQ-4bit"
 
-MLX_LOG="$ROOT/mlx.log"
-WEB_LOG="$ROOT/web.log"
-IMAGE_LOG="$ROOT/image.log"
+MLX_LOG="$ROOT/logs/mlx.log"
+WEB_LOG="$ROOT/logs/web.log"
+IMAGE_LOG="$ROOT/logs/image.log"
 
-mkdir -p "$ROOT"
+mkdir -p "$ROOT/logs" "$ROOT/data/images/inputs" "$ROOT/data/images/outputs"
 
 echo "======================================"
 echo " Starting local AI environment"
@@ -34,19 +34,17 @@ if [[ -z "$IP" ]]; then
 fi
 
 # Check required files and commands
-if ! command -v mlx_lm.server >/dev/null 2>&1; then
-    echo "ERROR: mlx_lm.server was not found in PATH."
-    echo "Open your usual terminal environment and check MLX installation."
-    read -k 1 "?Press any key to exit..."
-    echo
-    exit 1
-fi
-
 if [[ ! -x "$IMAGE_PYTHON" ]]; then
     echo "ERROR: Image virtual environment not found:"
     echo "$IMAGE_PYTHON"
     read -k 1 "?Press any key to exit..."
     echo
+    exit 1
+fi
+
+if ! "$IMAGE_PYTHON" -c "import mlx_lm.server" >/dev/null 2>&1; then
+    echo "ERROR: MLX-LM is not installed in $ROOT/.venv."
+    echo "  \"$IMAGE_PYTHON\" -m pip install -r \"$ROOT/requirements.txt\""
     exit 1
 fi
 
@@ -61,7 +59,7 @@ if [[ ! -x "$ROOT/.venv/bin/mflux-generate-flux2" ||
       ! -x "$ROOT/.venv/bin/mflux-generate-flux2-edit" ]]; then
     echo "ERROR: MFLUX is not installed in $ROOT/.venv."
     echo "Install image dependencies with:"
-    echo "  \"$IMAGE_PYTHON\" -m pip install -r \"$IMAGE_DIR/requirements.txt\""
+    echo "  \"$IMAGE_PYTHON\" -m pip install -r \"$ROOT/requirements.txt\""
     exit 1
 fi
 
@@ -85,7 +83,7 @@ sleep 2
 
 # Start the chat model server
 echo "Starting GPT-OSS 20B on port 8080..."
-nohup mlx_lm.server \
+nohup "$IMAGE_PYTHON" -m mlx_lm.server \
     --model "$MODEL" \
     --host 0.0.0.0 \
     --port 8080 \
@@ -114,7 +112,7 @@ fi
 echo "Starting web interface on port 8000..."
 (
     cd "$WEB_DIR" || exit 1
-    nohup python3 -m http.server 8000 --bind 0.0.0.0 \
+    nohup "$IMAGE_PYTHON" -m http.server 8000 --bind 0.0.0.0 \
         > "$WEB_LOG" 2>&1 < /dev/null &
 )
 
@@ -122,7 +120,7 @@ echo "Starting web interface on port 8000..."
 echo "Starting MFLUX image server on port 8090..."
 (
     cd "$IMAGE_DIR" || exit 1
-    nohup "$IMAGE_PYTHON" image_server.py \
+    nohup "$IMAGE_PYTHON" -u image_server.py \
         > "$IMAGE_LOG" 2>&1 < /dev/null &
 )
 
