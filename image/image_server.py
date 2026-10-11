@@ -26,6 +26,12 @@ class ImageHandler(BaseHTTPRequestHandler):
         self.send_cors_headers()
         self.end_headers()
 
+    def do_GET(self):
+        if urlparse(self.path).path == "/health":
+            self.send_json(200, {"status": "ok"})
+        else:
+            self.send_json(404, {"error": "Unknown endpoint"})
+
     def send_json(self, status, data):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -148,7 +154,11 @@ class ImageHandler(BaseHTTPRequestHandler):
         print("%s - %s" % (self.address_string(), format % args))
 
 if not GENERATE_CMD.exists() or not EDIT_CMD.exists():
-    raise SystemExit("MFLUX commands not found. Activate the image .venv first.")
+    raise SystemExit(
+        f"MFLUX commands not found in {BIN_DIR}. Install them with: "
+        f"{sys.executable} -m pip install -r "
+        f"{Path(__file__).with_name('requirements.txt')}"
+    )
 
 print(f"Starting image server on {HOST}:{PORT}")
 print(f"Generate command: {GENERATE_CMD}")

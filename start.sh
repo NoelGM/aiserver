@@ -4,10 +4,10 @@
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$PATH"
 
-ROOT="$HOME/LLM"
+ROOT="$(cd "$(dirname "$0")" && pwd)"
 WEB_DIR="$ROOT/web"
 IMAGE_DIR="$ROOT/image"
-IMAGE_PYTHON="$IMAGE_DIR/.venv/bin/python"
+IMAGE_PYTHON="$ROOT/.venv/bin/python"
 MODEL="mlx-community/gpt-oss-20b-OptiQ-4bit"
 
 MLX_LOG="$ROOT/mlx.log"
@@ -57,11 +57,30 @@ if [[ ! -f "$IMAGE_DIR/image_server.py" ]]; then
     exit 1
 fi
 
+if [[ ! -x "$ROOT/.venv/bin/mflux-generate-flux2" ||
+      ! -x "$ROOT/.venv/bin/mflux-generate-flux2-edit" ]]; then
+    echo "ERROR: MFLUX is not installed in $ROOT/.venv."
+    echo "Install image dependencies with:"
+    echo "  \"$IMAGE_PYTHON\" -m pip install -r \"$IMAGE_DIR/requirements.txt\""
+    exit 1
+fi
+
 # Stop previous instances of these services
 echo "Stopping previous server instances..."
-pkill -f "mlx_lm.server" 2>/dev/null
-pkill -f "http.server 8000" 2>/dev/null
-pkill -f "image_server.py" 2>/dev/null
+for PORT in 8080 8000 8090; do
+    for PID in $(lsof -tiTCP:"$PORT" -sTCP:LISTEN); do
+        COMMAND=$(ps -p "$PID" -o args=)
+        case "$PORT:$COMMAND" in
+            8080:*mlx_lm.server*|8000:*http.server\ 8000*|8090:*image_server.py*)
+                kill "$PID"
+                ;;
+            *)
+                echo "ERROR: Port $PORT is occupied by another application (PID $PID)."
+                exit 1
+                ;;
+        esac
+    done
+done
 sleep 2
 
 # Start the chat model server
@@ -69,6 +88,7 @@ echo "Starting GPT-OSS 20B on port 8080..."
 nohup mlx_lm.server \
     --model "$MODEL" \
     --host 0.0.0.0 \
+    --port 8080 \
     > "$MLX_LOG" 2>&1 < /dev/null &
 
 # Wait for the chat API to become available
@@ -106,8 +126,15 @@ echo "Starting MFLUX image server on port 8090..."
         > "$IMAGE_LOG" 2>&1 < /dev/null &
 )
 
-# Wait briefly for the web and image servers
-sleep 2
+# Wait for the image API, not just an open TCP port.
+IMAGE_READY=0
+for i in {1..30}; do
+    if curl -fsS --max-time 2 "http://127.0.0.1:8090/health" >/dev/null 2>&1; then
+        IMAGE_READY=1
+        break
+    fi
+    sleep 1
+done
 
 echo
 echo "======================================"
@@ -120,7 +147,7 @@ else
     echo "Web interface:  CHECK $WEB_LOG"
 fi
 
-if lsof -nP -iTCP:8090 -sTCP:LISTEN >/dev/null 2>&1; then
+if [[ "$IMAGE_READY" -eq 1 ]]; then
     echo "Image server:   OK"
 else
     echo "Image server:   CHECK $IMAGE_LOG"
@@ -141,4 +168,10 @@ echo "  Chat:   $MLX_LOG"
 echo "  Web:    $WEB_LOG"
 echo "  Images: $IMAGE_LOG"
 echo
+
+if [[ "$IMAGE_READY" -ne 1 ]]; then
+    echo "ERROR: Image API failed to start. See $IMAGE_LOG."
+    exit 1
+fi
+
 echo "Startup complete. Servers run in the background."
