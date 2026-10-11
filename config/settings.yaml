@@ -14,6 +14,8 @@ chat:
 images:
   host: "0.0.0.0"
   port: 8090
+  generate_command: "mflux-generate-flux2"
+  edit_command: "mflux-generate-flux2-edit"
   generate_model: "flux2-klein-4b"
   edit_model: "flux2-klein-4b"
   generate_url: "http://{hostname}:{port}/generate"

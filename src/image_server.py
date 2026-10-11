@@ -17,8 +17,8 @@ INPUT_DIR = DATA_DIR / "inputs"
 OUTPUT_DIR = DATA_DIR / "outputs"
 
 BIN_DIR = Path(sys.executable).parent
-GENERATE_CMD = BIN_DIR / "mflux-generate-flux2"
-EDIT_CMD = BIN_DIR / "mflux-generate-flux2-edit"
+GENERATE_CMD = BIN_DIR / settings.images.generate_command
+EDIT_CMD = BIN_DIR / settings.images.edit_command
 
 class ImageHandler(BaseHTTPRequestHandler):
 

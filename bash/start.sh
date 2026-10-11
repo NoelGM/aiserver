@@ -49,6 +49,8 @@ CHAT_PORT=$(get_setting chat port) || exit 1
 MODEL=$(get_setting chat model) || exit 1
 WEB_PORT=$(get_setting web port) || exit 1
 IMAGE_PORT=$(get_setting images port) || exit 1
+IMAGE_GENERATE_COMMAND=$(get_setting images generate_command) || exit 1
+IMAGE_EDIT_COMMAND=$(get_setting images edit_command) || exit 1
 CHAT_HEALTH=$(get_setting chat health_url) || exit 1
 WEB_HEALTH=$(get_setting web health_url) || exit 1
 IMAGE_HEALTH=$(get_setting images health_url) || exit 1
@@ -66,8 +68,8 @@ if [[ ! -f "$IMAGE_DIR/image_server.py" ]]; then
     exit 1
 fi
 
-if [[ ! -x "$ROOT/.venv/bin/mflux-generate-flux2" ||
-      ! -x "$ROOT/.venv/bin/mflux-generate-flux2-edit" ]]; then
+if [[ ! -x "$ROOT/.venv/bin/$IMAGE_GENERATE_COMMAND" ||
+      ! -x "$ROOT/.venv/bin/$IMAGE_EDIT_COMMAND" ]]; then
     echo "ERROR: MFLUX is not installed in $ROOT/.venv."
     echo "Install image dependencies with:"
     echo "  \"$IMAGE_PYTHON\" -m pip install -r \"$ROOT/requirements.txt\""

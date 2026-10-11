@@ -23,7 +23,8 @@ settings = Dynaconf(
         Validator(name, must_exist=True, is_type_of=str, len_min=1)
         for name in (
             "chat.model", "chat.api_url", "images.generate_model",
-            "images.edit_model", "images.generate_url", "images.edit_url",
+            "images.edit_model", "images.generate_command", "images.edit_command",
+            "images.generate_url", "images.edit_url",
         )
     ] + [
         Validator(name, must_exist=True, is_type_of=int, gte=1)
@@ -96,7 +97,10 @@ browser_settings()
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("service", choices=("web", "chat", "images"))
-    parser.add_argument("field", choices=("host", "port", "model", "health_url"))
+    parser.add_argument(
+        "field",
+        choices=("host", "port", "model", "generate_command", "edit_command", "health_url"),
+    )
     args = parser.parse_args()
     service = settings[args.service]
     if args.field == "health_url":
