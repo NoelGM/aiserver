@@ -1,12 +1,35 @@
 import argparse
+import logging
 from pathlib import Path
 from urllib.parse import urlparse
 
 from dynaconf import Dynaconf, Validator
 
 ROOT = Path(__file__).resolve().parent.parent
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+LOG_DIR = ROOT / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+logger = logging.getLogger("configuration")
+logger.setLevel(logging.INFO)
+logger.propagate = False
+if not logger.handlers:
+    handler = logging.FileHandler(LOG_DIR / "configuration.log", encoding="utf-8")
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    logger.addHandler(handler)
+
+
+def configure_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format=LOG_FORMAT,
+    )
+
+
 SETTINGS_FILE = ROOT / "config" / "settings.yaml"
+logger.info("Loading configuration from %s", SETTINGS_FILE)
 if not SETTINGS_FILE.is_file():
+    logger.error("Configuration not found: %s", SETTINGS_FILE)
     raise FileNotFoundError(f"Configuration not found: {SETTINGS_FILE}")
 
 settings = Dynaconf(
@@ -92,6 +115,7 @@ def browser_settings():
     }
 
 browser_settings()
+logger.info("Configuration loaded and validated successfully.")
 
 
 def main():
@@ -107,9 +131,11 @@ def main():
         host = "127.0.0.1" if service.host == "0.0.0.0" else service.host
         if host == "::":
             host = "::1"
-        print(service_url("http://{hostname}:{port}/health", service, host))
+        value = service_url("http://{hostname}:{port}/health", service, host)
     else:
-        print(service[args.field])
+        value = service[args.field]
+    logger.info("%s.%s = %s", args.service, args.field, value)
+    print(value)
 
 
 if __name__ == "__main__":

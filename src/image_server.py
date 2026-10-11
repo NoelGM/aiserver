@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import shutil
 import subprocess
 import sys
@@ -8,7 +9,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
-from configuration import EDIT_ROUTE, GENERATE_ROUTE, ROOT, settings
+from configuration import EDIT_ROUTE, GENERATE_ROUTE, ROOT, configure_logging, settings
+
+logger = logging.getLogger(__name__)
 
 HOST = settings.images.host
 PORT = settings.images.port
@@ -122,7 +125,10 @@ class ImageHandler(BaseHTTPRequestHandler):
                 if seed not in (None, ""):
                     command.extend(["--seed", str(int(seed))])
 
-                print(f"Running MFLUX {'generation' if route == GENERATE_ROUTE else 'editing'}...")
+                logger.info(
+                    "Running MFLUX %s...",
+                    "generation" if route == GENERATE_ROUTE else "editing",
+                )
                 result = subprocess.run(
                     command,
                     capture_output=True,
@@ -132,7 +138,7 @@ class ImageHandler(BaseHTTPRequestHandler):
 
                 if result.returncode != 0:
                     details = (result.stderr or result.stdout or "Unknown MFLUX error")
-                    print(details[-5000:])
+                    logger.error("MFLUX failed: %s", details[-5000:])
                     self.send_json(500, {"error": details[-2500:]})
                     return
 
@@ -143,6 +149,7 @@ class ImageHandler(BaseHTTPRequestHandler):
                         output_path = candidates[0]
 
                 if not output_path.exists():
+                    logger.error("MFLUX finished but no output image was found.")
                     self.send_json(500, {
                         "error": "MFLUX finished but no output image was found."
                     })
@@ -157,18 +164,25 @@ class ImageHandler(BaseHTTPRequestHandler):
                 self.send_cors_headers()
                 self.end_headers()
                 self.wfile.write(image_bytes)
-                print("Image returned successfully.")
+                logger.info("Image returned successfully.")
 
         except subprocess.TimeoutExpired:
+            logger.exception(
+                "Image generation timed out after %s seconds.", settings.images.timeout
+            )
             self.send_json(504, {"error": f"Image generation timed out after {settings.images.timeout} seconds."})
         except Exception as exc:
-            print(f"Request error: {exc}")
+            logger.exception("Request error: %s", exc)
             self.send_json(500, {"error": str(exc)})
 
     def log_message(self, format, *args):
-        print("%s - %s" % (self.address_string(), format % args))
+        logger.info("%s - %s", self.address_string(), format % args)
+
+    def log_error(self, format, *args):
+        logger.error("%s - %s", self.address_string(), format % args)
 
 def main():
+    configure_logging()
     if not GENERATE_CMD.exists() or not EDIT_CMD.exists():
         raise SystemExit(
             f"MFLUX commands not found in {BIN_DIR}. Install them with: "
@@ -177,10 +191,10 @@ def main():
 
     INPUT_DIR.mkdir(parents=True, exist_ok=True)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Starting image server on {HOST}:{PORT}")
-    print(f"Generate command: {GENERATE_CMD}")
-    print(f"Edit command: {EDIT_CMD}")
-    print(f"Image data: {DATA_DIR}")
+    logger.info("Starting image server on %s:%s", HOST, PORT)
+    logger.info("Generate command: %s", GENERATE_CMD)
+    logger.info("Edit command: %s", EDIT_CMD)
+    logger.info("Image data: %s", DATA_DIR)
 
     HTTPServer((HOST, PORT), ImageHandler).serve_forever()
 

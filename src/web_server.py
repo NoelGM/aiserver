@@ -1,12 +1,21 @@
 import json
+import logging
 from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 
-from configuration import ROOT, browser_settings, settings
+from configuration import ROOT, browser_settings, configure_logging, settings
+
+logger = logging.getLogger(__name__)
 
 
 class WebHandler(SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        logger.info("%s - %s", self.address_string(), format % args)
+
+    def log_error(self, format, *args):
+        logger.error("%s - %s", self.address_string(), format % args)
+
     def do_GET(self):
         if urlparse(self.path).path == "/config.js":
             body = (
@@ -32,8 +41,9 @@ class WebHandler(SimpleHTTPRequestHandler):
 
 
 def main():
+    configure_logging()
     handler = partial(WebHandler, directory=str(ROOT / "web"))
-    print(f"Starting web server on {settings.web.host}:{settings.web.port}")
+    logger.info("Starting web server on %s:%s", settings.web.host, settings.web.port)
     HTTPServer((settings.web.host, settings.web.port), handler).serve_forever()
 
 
