@@ -1,0 +1,28 @@
+# {hostname} uses the browser's hostname; {port} uses the service's port.
+# Use an absolute URL instead when the API is hosted on a different machine.
+web:
+  host: "0.0.0.0"
+  port: 8000
+
+chat:
+  host: "0.0.0.0"
+  port: 8080
+  model: "mlx-community/gpt-oss-20b-OptiQ-4bit"
+  api_url: "http://{hostname}:{port}/v1/chat/completions"
+  max_tokens: 500
+
+images:
+  host: "0.0.0.0"
+  port: 8090
+  generate_model: "flux2-klein-4b"
+  edit_model: "flux2-klein-4b"
+  generate_url: "http://{hostname}:{port}/generate"
+  edit_url: "http://{hostname}:{port}/edit"
+  quantize: 4
+  low_ram: true
+  width: 1024
+  height: 1024
+  min_dimension: 256
+  max_dimension: 1536
+  steps: 4
+  timeout: 600

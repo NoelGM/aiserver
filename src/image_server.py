@@ -8,10 +8,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
+from configuration import EDIT_ROUTE, GENERATE_ROUTE, ROOT, settings
 
-HOST = "0.0.0.0"
-PORT = 8090
-ROOT = Path(__file__).resolve().parent.parent
+HOST = settings.images.host
+PORT = settings.images.port
 DATA_DIR = ROOT / "data" / "images"
 INPUT_DIR = DATA_DIR / "inputs"
 OUTPUT_DIR = DATA_DIR / "outputs"
@@ -49,7 +49,7 @@ class ImageHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
-        if route not in ("/generate", "/edit"):
+        if route not in (GENERATE_ROUTE, EDIT_ROUTE):
             self.send_json(404, {"error": "Unknown endpoint"})
             return
 
@@ -63,31 +63,34 @@ class ImageHandler(BaseHTTPRequestHandler):
             if not prompt:
                 raise ValueError("Please enter a prompt.")
 
-            steps = max(1, min(int(data.get("steps", 4)), 50))
+            steps = max(1, min(int(data.get("steps", settings.images.steps)), 50))
             request_id = uuid4().hex
 
             with tempfile.TemporaryDirectory(prefix="mflux_", dir=DATA_DIR) as temp:
                 workdir = Path(temp)
                 output_path = workdir / "output.png"
 
-                if route == "/generate":
-                    width = max(256, min(int(data.get("width", 768)), 1536))
-                    height = max(256, min(int(data.get("height", 768)), 1536))
+                if route == GENERATE_ROUTE:
+                    width = max(settings.images.min_dimension, min(
+                        int(data.get("width", settings.images.width)), settings.images.max_dimension
+                    ))
+                    height = max(settings.images.min_dimension, min(
+                        int(data.get("height", settings.images.height)), settings.images.max_dimension
+                    ))
 
                     # FLUX image dimensions should be multiples of 16.
-                    width = max(256, round(width / 16) * 16)
-                    height = max(256, round(height / 16) * 16)
+                    width = max(settings.images.min_dimension, round(width / 16) * 16)
+                    height = max(settings.images.min_dimension, round(height / 16) * 16)
 
                     command = [
                         str(GENERATE_CMD),
-                        "--model", "flux2-klein-4b",
-                        "--quantize", "4",
+                        "--model", settings.images.generate_model,
+                        "--quantize", str(settings.images.quantize),
                         "--prompt", prompt,
                         "--width", str(width),
                         "--height", str(height),
                         "--steps", str(steps),
                         "--output", str(output_path),
-                        "--low-ram",
                     ]
                 else:
                     image_data = data.get("image", "")
@@ -104,25 +107,27 @@ class ImageHandler(BaseHTTPRequestHandler):
 
                     command = [
                         str(EDIT_CMD),
-                        "--model", "flux2-klein-4b",
-                        "--quantize", "4",
+                        "--model", settings.images.edit_model,
+                        "--quantize", str(settings.images.quantize),
                         "--image-paths", str(input_path),
                         "--prompt", prompt,
                         "--steps", str(steps),
                         "--output", str(output_path),
-                        "--low-ram",
                     ]
+
+                if settings.images.low_ram:
+                    command.append("--low-ram")
 
                 seed = data.get("seed")
                 if seed not in (None, ""):
                     command.extend(["--seed", str(int(seed))])
 
-                print(f"Running MFLUX {'generation' if route == '/generate' else 'editing'}...")
+                print(f"Running MFLUX {'generation' if route == GENERATE_ROUTE else 'editing'}...")
                 result = subprocess.run(
                     command,
                     capture_output=True,
                     text=True,
-                    timeout=600,
+                    timeout=settings.images.timeout,
                 )
 
                 if result.returncode != 0:
@@ -155,7 +160,7 @@ class ImageHandler(BaseHTTPRequestHandler):
                 print("Image returned successfully.")
 
         except subprocess.TimeoutExpired:
-            self.send_json(504, {"error": "Image generation timed out after 10 minutes."})
+            self.send_json(504, {"error": f"Image generation timed out after {settings.images.timeout} seconds."})
         except Exception as exc:
             print(f"Request error: {exc}")
             self.send_json(500, {"error": str(exc)})

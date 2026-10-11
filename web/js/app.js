@@ -2,19 +2,36 @@
    CHAT CONFIGURATION
    ========================= */
 
-const API_URL =
-    `http://${window.location.hostname}:8080/v1/chat/completions`;
+const config = window.AISERVER_CONFIG;
+if (!config) {
+    document.getElementById("imageStatus").textContent =
+        "No se pudo cargar la configuración del servidor. Recarga la página.";
+    document.getElementById("editStatus").textContent =
+        "No se pudo cargar la configuración del servidor. Recarga la página.";
+    document.getElementById("chat").textContent =
+        "No se pudo cargar la configuración del servidor. Recarga la página.";
+    for (const id of ["send", "generateImage", "editImageButton"]) {
+        document.getElementById(id).disabled = true;
+    }
+    throw new Error("Server configuration was not loaded.");
+}
+
+function apiUrl(template) {
+    return template.replace("{hostname}", window.location.hostname);
+}
+
+const API_URL = apiUrl(config.chat.api_url);
 
 const MODEL =
-    "mlx-community/gpt-oss-20b-OptiQ-4bit";
+    config.chat.model;
 
 
 /* =========================
    IMAGE CONFIGURATION
    ========================= */
 
-const IMAGE_GENERATE_API = `http://${window.location.hostname}:8090/generate`;
-const IMAGE_EDIT_API = `http://${window.location.hostname}:8090/edit`;
+const IMAGE_GENERATE_API = apiUrl(config.images.generate_url);
+const IMAGE_EDIT_API = apiUrl(config.images.edit_url);
 
 
 /* =========================
@@ -234,7 +251,7 @@ async function sendMessage() {
                         JSON.stringify({
                             model: MODEL,
                             messages: messages,
-                            max_tokens: 500,
+                            max_tokens: config.chat.max_tokens,
                             stream: false
                         })
                 }
@@ -396,9 +413,9 @@ async function generateImage() {
                     body:
                         JSON.stringify({
                             prompt: prompt,
-                            width: 1024,
-                            height: 1024,
-                            steps: 4
+                            width: config.images.width,
+                            height: config.images.height,
+                            steps: config.images.steps
                         })
                 }
             );
@@ -517,9 +534,10 @@ async function editImage() {
         });
 
         const bitmap = await createImageBitmap(file);
-        const scale = Math.min(1, 1536 / bitmap.width, 1536 / bitmap.height);
-        const width = Math.max(256, Math.round(bitmap.width * scale));
-        const height = Math.max(256, Math.round(bitmap.height * scale));
+        const scale = Math.min(1, config.images.max_dimension / bitmap.width,
+            config.images.max_dimension / bitmap.height);
+        const width = Math.max(config.images.min_dimension, Math.round(bitmap.width * scale));
+        const height = Math.max(config.images.min_dimension, Math.round(bitmap.height * scale));
         bitmap.close();
 
         const response = await fetch(IMAGE_EDIT_API, {
@@ -530,7 +548,7 @@ async function editImage() {
                 image: imageData,
                 width: width,
                 height: height,
-                steps: 4
+                steps: config.images.steps
             })
         });
 

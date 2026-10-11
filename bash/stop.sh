@@ -1,16 +1,22 @@
 #!/bin/bash
 
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PYTHON="$ROOT/.venv/bin/python"
+CHAT_PORT=$("$PYTHON" "$ROOT/src/configuration.py" chat port) || exit 1
+WEB_PORT=$("$PYTHON" "$ROOT/src/configuration.py" web port) || exit 1
+IMAGE_PORT=$("$PYTHON" "$ROOT/src/configuration.py" images port) || exit 1
+
 echo ""
 echo "=========================================="
 echo "             STOPPING MY AI"
 echo "=========================================="
 echo ""
 
-for PORT in 8080 8000 8090; do
+for PORT in "$CHAT_PORT" "$WEB_PORT" "$IMAGE_PORT"; do
     for PID in $(lsof -tiTCP:"$PORT" -sTCP:LISTEN); do
         COMMAND=$(ps -p "$PID" -o args=)
-        case "$PORT:$COMMAND" in
-            8080:*mlx_lm.server*|8000:*http.server\ 8000*|8090:*image_server.py*)
+        case "$COMMAND" in
+            *mlx_lm.server*|*http.server*|*web_server.py*|*image_server.py*)
                 echo "Stopping service on port $PORT (PID $PID)..."
                 kill "$PID" || exit 1
                 ;;
