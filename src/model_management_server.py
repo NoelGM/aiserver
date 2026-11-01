@@ -7,6 +7,7 @@ from huggingface_hub import scan_cache_dir
 from huggingface_hub.constants import HF_HUB_CACHE
 
 from api_docs import openapi_spec
+from active_models import SelectionError, active_models, switch_model
 from configuration import ROOT, settings
 
 logger = logging.getLogger(__name__)
@@ -138,8 +139,8 @@ def configured_models():
         None. Reads the current application settings.
 
     Returns:
-        dict: Chat and embedding model identifiers plus image generation and
-        editing identifiers, without checking downloads or service readiness.
+        dict: Startup chat and embedding identifiers plus image generation and
+        editing defaults, independent of runtime selections and readiness.
     """
     return {
         "chat": settings.chat.model,
@@ -152,6 +153,37 @@ def configured_models():
 
 
 class ModelManagementMixin:
+    def do_PUT(self):
+        """Validate and publish a runtime model selection without modifying YAML.
+
+        Args:
+            None. Reads a JSON object with service and model from the HTTP body.
+
+        Returns:
+            None: Sends active selections on success, 400 for malformed input,
+            422 for rejected candidates or 500 for state access failures.
+        """
+        if urlparse(self.path).path != "/models/active":
+            self.send_json({"error": "Unknown endpoint"}, status=404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if not 0 < length <= 4096:
+                raise ValueError("A JSON body of at most 4096 bytes is required.")
+            data = json.loads(self.rfile.read(length))
+            if not isinstance(data, dict) or set(data) != {"service", "model"}:
+                raise ValueError("Request must contain exactly service and model.")
+        except (ValueError, UnicodeError) as exc:
+            self.send_json({"error": str(exc)}, status=400)
+            return
+        try:
+            self.send_json(switch_model(data["service"], data["model"]))
+        except SelectionError as exc:
+            self.send_json({"error": str(exc)}, status=422)
+        except (OSError, ValueError) as exc:
+            logger.exception("Unable to update active model state")
+            self.send_json({"error": str(exc)}, status=500)
+
     def send_json(self, data, status=200):
         """Send a JSON HTTP response without caching.
 
@@ -197,6 +229,12 @@ class ModelManagementMixin:
         route = urlparse(self.path).path
         if route == "/models/configured":
             self.send_json(configured_models())
+        elif route == "/models/active":
+            try:
+                self.send_json(active_models())
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                logger.exception("Unable to read active model state")
+                self.send_json({"error": str(exc)}, status=500)
         elif route in ("/models/list", "/openapi.json"):
             try:
                 catalog = model_catalog()

@@ -135,13 +135,12 @@ def browser_settings():
         None.
 
     Returns:
-        dict: API URLs, chat model and generation defaults; URLs retain the
-        hostname placeholder for resolution by the browser.
+        dict: Same-origin active-model chat proxy URL and generation defaults;
+        image URLs retain the hostname placeholder for browser resolution.
     """
     return {
         "chat": {
-            "api_url": service_url(settings.chat.api_url, settings.chat, "{hostname}"),
-            "model": settings.chat.model,
+            "api_url": "/v1/chat/completions",
             "max_tokens": settings.chat.max_tokens,
         },
         "images": {

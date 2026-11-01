@@ -1,6 +1,7 @@
 from urllib.parse import parse_qsl, urlparse
 
 from configuration import service_url, settings
+from active_models import CHAT_ROUTE, SERVICES
 
 
 def endpoint(template, service):
@@ -86,7 +87,7 @@ def openapi_spec(catalog, configured):
             "tags": ["Models"],
             "operationId": "configuredModels",
             "summary": "Show configured models by service",
-            "description": "Current chat, embedding, image generation and image editing configuration; "
+            "description": "Startup chat, embedding, image generation and image editing defaults; "
                            "does not check downloads or backend readiness.",
             "servers": [{"url": "/"}],
             "responses": {"200": {
@@ -113,6 +114,68 @@ def openapi_spec(catalog, configured):
             }},
         }},
     }
+    active_schema = {
+        "type": "object",
+        "required": [*SERVICES, "validation", "embedding_inference_available"],
+        "properties": {
+            **{service: {"type": "string"} for service in SERVICES},
+            "embedding_inference_available": {"type": "boolean", "enum": [False]},
+            "validation": {
+                "type": "object",
+                "required": list(SERVICES),
+                "properties": {service: {"type": "string", "enum": [
+                    "startup_default", "local_files_checked", "backend_loaded",
+                ]} for service in SERVICES},
+            },
+        },
+    }
+    active_response = json_response("Current runtime selections.", {
+        "$ref": "#/components/schemas/ActiveModels",
+    })
+    paths["/models/active"] = {
+        "get": {
+            "tags": ["Models"],
+            "operationId": "activeModels",
+            "summary": "Show active runtime selections",
+            "description": (
+                "Shared by the web/chat proxy and image process. Startup defaults are not "
+                "validated. Embedding is selection metadata only; no embedding inference API exists. "
+                "backend_loaded means a chat load probe succeeded, not that the model stays resident."
+            ),
+            "responses": {"200": active_response, "500": error},
+        },
+        "put": {
+            "tags": ["Models"],
+            "operationId": "switchActiveModel",
+            "summary": "Switch a service to a downloaded model",
+            "description": (
+                "Accepts cached HF repository IDs, configured local chat/embedding directories, "
+                "or installed FLUX.2 Klein aliases/canonical repositories for images. "
+                "Other image commands, custom image checkpoints and remote-code models are rejected. "
+                "Pins the local snapshot; never downloads or edits YAML. Complete safetensors "
+                "headers, shard indexes, tokenizers and architecture metadata are checked; "
+                "images also require the installed MFLUX weight mappings for every transformer/encoder layer. "
+                "Chat also performs a one-token backend load probe (may take time and GPU memory); "
+                "image/embedding checks do not load GPU weights or prove numerical correctness. "
+                "A failed validation leaves selections unchanged. Subsequent proxy/image requests "
+                "capture the new selection; in-flight requests retain theirs. Changes reset at "
+                "application startup. The existing LAN API is unauthenticated; restrict access "
+                "to trusted clients. Direct MLX-LM requests bypass runtime defaults."
+            ),
+            "requestBody": {
+                "required": True,
+                "content": {"application/json": {
+                    "schema": {"type": "object", "additionalProperties": False,
+                               "required": ["service", "model"], "properties": {
+                                   "service": {"type": "string", "enum": list(SERVICES)},
+                                   "model": {"type": "string", "minLength": 1, "maxLength": 1024},
+                               }},
+                    "example": {"service": "image_generate", "model": "flux2-klein-4b"},
+                }},
+            },
+            "responses": {"200": active_response, "400": error, "422": error, "500": error},
+        },
+    }
     model_schema = {
         "type": "object",
         "required": ["object", "data"],
@@ -134,14 +197,17 @@ def openapi_spec(catalog, configured):
             }},
         },
     }
-    chat_path, chat_server, chat_parameters = endpoint(settings.chat.api_url, settings.chat)
-    paths.setdefault(chat_path, {})["post"] = {
+    chat_path, chat_server, _ = endpoint(settings.chat.api_url, settings.chat)
+    paths.setdefault(CHAT_ROUTE, {})["post"] = {
         "tags": ["Chat"],
         "operationId": "chatCompletion",
         "summary": "Generate a chat response",
-        "description": "Uses the MLX-LM backend. Disable streaming for a JSON response.",
-        "servers": [chat_server],
-        "parameters": chat_parameters,
+        "description": (
+            "Web proxy captures the active chat selection per request and overrides model, "
+            "adapters and draft_model. Disable streaming for JSON. For direct MLX-LM access "
+            f"use its configured endpoint {chat_path}; direct requests do not use runtime defaults."
+        ),
+        "servers": [{"url": "/"}],
         "requestBody": {
             "required": True,
             "content": {"application/json": {
@@ -149,7 +215,8 @@ def openapi_spec(catalog, configured):
                     "type": "object",
                     "required": ["messages"],
                     "properties": {
-                        "model": {"type": "string", "default": settings.chat.model},
+                        "model": {"type": "string",
+                                  "description": "Optional; ignored by the active-model proxy."},
                         "messages": {"type": "array", "minItems": 1, "items": {
                             "type": "object",
                             "required": ["role", "content"],
@@ -167,7 +234,6 @@ def openapi_spec(catalog, configured):
                     },
                 },
                 "example": {
-                    "model": settings.chat.model,
                     "messages": [{"role": "user", "content": "Hello!"}],
                     "max_tokens": settings.chat.max_tokens,
                     "stream": False,
@@ -193,6 +259,7 @@ def openapi_spec(catalog, configured):
             },
             "400": error,
             "500": error,
+            "502": error,
         },
     }
     for template, operation_id, summary, editing in (
@@ -229,7 +296,10 @@ def openapi_spec(catalog, configured):
             "tags": ["Images"],
             "operationId": operation_id,
             "summary": summary,
-            "description": f"Returns PNG bytes. Backend timeout: {settings.images.timeout} seconds.",
+            "description": (
+                "Captures the shared active image selection when each request starts. "
+                f"Returns PNG bytes. Backend timeout: {settings.images.timeout} seconds."
+            ),
             "servers": [server],
             "parameters": parameters,
             "requestBody": {
@@ -267,5 +337,5 @@ def openapi_spec(catalog, configured):
         "servers": [{"url": "/"}],
         "tags": [{"name": name} for name in ("Models", "Chat", "Images", "Health")],
         "paths": paths,
-        "components": {"schemas": {"ModelCatalog": model_schema}},
+        "components": {"schemas": {"ModelCatalog": model_schema, "ActiveModels": active_schema}},
     }

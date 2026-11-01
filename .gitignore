@@ -4,6 +4,8 @@ __pycache__/
 *.pyc
 .DS_Store
 logs/*.log
+data/models/
+data/images/requests/
 data/images/inputs/*
 data/images/outputs/*
 !data/images/inputs/.gitkeep

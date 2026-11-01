@@ -94,9 +94,12 @@ for PORT in "$CHAT_PORT" "$WEB_PORT" "$IMAGE_PORT"; do
 done
 sleep 2
 
+# Runtime choices are shared on disk, but never survive application startup.
+"$IMAGE_PYTHON" "$ROOT/src/active_models.py" || exit 1
+
 # Start the chat model server
 echo "Starting $MODEL on port $CHAT_PORT..."
-nohup "$IMAGE_PYTHON" -m mlx_lm.server \
+nohup env HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$IMAGE_PYTHON" -m mlx_lm.server \
     --model "$MODEL" \
     --host "$CHAT_HOST" \
     --port "$CHAT_PORT" \

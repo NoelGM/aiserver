@@ -1,14 +1,16 @@
 import base64
 import json
 import logging
+import os
 import shutil
 import subprocess
 import sys
-import tempfile
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 from uuid import uuid4
+from active_models import read_selections
 from configuration import EDIT_ROUTE, GENERATE_ROUTE, ROOT, configure_logging, settings
 
 logger = logging.getLogger(__name__)
@@ -22,6 +24,17 @@ OUTPUT_DIR = DATA_DIR / "outputs"
 BIN_DIR = Path(sys.executable).parent
 GENERATE_CMD = BIN_DIR / settings.images.generate_command
 EDIT_CMD = BIN_DIR / settings.images.edit_command
+
+
+@contextmanager
+def _request_workspace(request_id):
+    workdir = DATA_DIR / "requests" / request_id
+    workdir.mkdir(parents=True)
+    try:
+        yield workdir
+    finally:
+        shutil.rmtree(workdir)
+
 
 class ImageHandler(BaseHTTPRequestHandler):
 
@@ -103,6 +116,9 @@ class ImageHandler(BaseHTTPRequestHandler):
             return
 
         try:
+            selection = read_selections()[
+                "image_generate" if route == GENERATE_ROUTE else "image_edit"
+            ]
             length = int(self.headers.get("Content-Length", "0"))
             if length <= 0 or length > 30 * 1024 * 1024:
                 raise ValueError("Invalid or excessively large request.")
@@ -115,8 +131,7 @@ class ImageHandler(BaseHTTPRequestHandler):
             steps = max(1, min(int(data.get("steps", settings.images.steps)), 50))
             request_id = uuid4().hex
 
-            with tempfile.TemporaryDirectory(prefix="mflux_", dir=DATA_DIR) as temp:
-                workdir = Path(temp)
+            with _request_workspace(request_id) as workdir:
                 output_path = workdir / "output.png"
 
                 if route == GENERATE_ROUTE:
@@ -133,7 +148,7 @@ class ImageHandler(BaseHTTPRequestHandler):
 
                     command = [
                         str(GENERATE_CMD),
-                        "--model", settings.images.generate_model,
+                        "--model", selection["path"] or selection["alias"] or selection["model"],
                         "--quantize", str(settings.images.quantize),
                         "--prompt", prompt,
                         "--width", str(width),
@@ -156,13 +171,16 @@ class ImageHandler(BaseHTTPRequestHandler):
 
                     command = [
                         str(EDIT_CMD),
-                        "--model", settings.images.edit_model,
+                        "--model", selection["path"] or selection["alias"] or selection["model"],
                         "--quantize", str(settings.images.quantize),
                         "--image-paths", str(input_path),
                         "--prompt", prompt,
                         "--steps", str(steps),
                         "--output", str(output_path),
                     ]
+
+                if selection["path"]:
+                    command.extend(["--base-model", selection["alias"] or selection["model"]])
 
                 if settings.images.low_ram:
                     command.append("--low-ram")
@@ -180,6 +198,7 @@ class ImageHandler(BaseHTTPRequestHandler):
                     capture_output=True,
                     text=True,
                     timeout=settings.images.timeout,
+                    env={**os.environ, "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"},
                 )
 
                 if result.returncode != 0:

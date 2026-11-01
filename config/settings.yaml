@@ -2,7 +2,17 @@
 # Use an absolute URL instead when the API is hosted on a different machine.
 # Chat interface and model management API listener (chat_server.py).
 # GET /models/list discovers local models in the Hugging Face cache and configured directories.
-# GET /models/configured returns the models assigned to chat, embeddings and images.
+# GET /models/configured returns startup defaults, not runtime selections.
+# GET /models/active returns current chat, image_generate, image_edit and embedding selections.
+# PUT /models/active accepts {"service": "chat", "model": "cached/repository"}.
+# Changes are shared between processes and reset from this file at startup; YAML is not edited.
+# Candidates must be downloaded. Chat changes load/probe MLX-LM before acceptance.
+# Images support installed FLUX.2 Klein aliases/canonical repositories only; complete local
+# files and geometry are checked, but GPU loading occurs on the next image request.
+# Embedding selection is metadata only: no embedding inference API is implemented.
+# Chat clients should use the web listener's /v1/chat/completions proxy for active defaults.
+# Direct requests to port 8080 retain MLX-LM's own model/default semantics.
+# Services run offline; download models separately before starting/switching.
 # Cached weights may be partial; the catalog does not verify backend readiness.
 # /docs provides Swagger UI; /openapi.json describes all APIs.
 web:
@@ -13,7 +23,7 @@ chat:
   host: "0.0.0.0"
   port: 8080
   model: "mlx-community/gpt-oss-20b-OptiQ-4bit"
-  api_url: "http://{hostname}:{port}/v1/chat/completions"
+  api_url: "http://{hostname}:{port}/v1/chat/completions" # Backend target; browser uses web proxy.
   max_tokens: 500
 
 embedding:

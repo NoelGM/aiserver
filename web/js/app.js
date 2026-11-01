@@ -22,10 +22,6 @@ function apiUrl(template) {
 
 const API_URL = apiUrl(config.chat.api_url);
 
-const MODEL =
-    config.chat.model;
-
-
 /* =========================
    IMAGE CONFIGURATION
    ========================= */
@@ -249,7 +245,6 @@ async function sendMessage() {
 
                     body:
                         JSON.stringify({
-                            model: MODEL,
                             messages: messages,
                             max_tokens: config.chat.max_tokens,
                             stream: false
