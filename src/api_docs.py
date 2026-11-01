@@ -4,6 +4,18 @@ from configuration import service_url, settings
 
 
 def endpoint(template, service):
+    """Describe a configured endpoint for OpenAPI.
+
+    Args:
+        template (str): API URL with optional hostname and port placeholders.
+        service: Service settings containing the port used by the template.
+
+    Returns:
+        tuple: URL path, OpenAPI server definition and query parameter list.
+
+    Raises:
+        ValueError: If the expanded URL is invalid.
+    """
     parsed = urlparse(service_url(template, service, "{hostname}"))
     server = {"url": f"{parsed.scheme}://{parsed.netloc}"}
     if "{hostname}" in server["url"]:
@@ -20,29 +32,83 @@ def endpoint(template, service):
 
 
 def json_response(description, schema):
+    """Build an OpenAPI response definition for JSON content.
+
+    Args:
+        description (str): Human-readable description of the response.
+        schema (dict): OpenAPI schema describing the JSON response body.
+
+    Returns:
+        dict: Response definition with its description and JSON content schema.
+    """
     return {
         "description": description,
         "content": {"application/json": {"schema": schema}},
     }
 
 
-def openapi_spec(catalog):
+def openapi_spec(catalog, configured):
+    """Build the OpenAPI specification for the model, chat and image APIs.
+
+    Args:
+        catalog (dict): Local model catalog used as the list response example.
+        configured (dict): Configured models used as the configuration example.
+
+    Returns:
+        dict: OpenAPI 3.0.3 document using current service URLs and defaults.
+    """
     error = json_response("Request or backend error.", {
         "type": "object",
         "properties": {"error": {"type": "string"}},
     })
     paths = {
-        "/v1/models": {"get": {
-            "tags": ["Catalog"],
+        "/models/list": {"get": {
+            "tags": ["Models"],
             "operationId": "listModels",
-            "summary": "List configured chat and image models",
-            "description": "Does not check downloads or whether backends are running.",
+            "summary": "List locally downloaded models",
+            "description": (
+                "Scans the Hugging Face cache (HF_HUB_CACHE/HF_HOME) and configured local "
+                "model directories. Cache entries without weight files are excluded. "
+                "Types and capabilities are inferred from metadata, not backend compatibility. "
+                "Downloads may be partial; this does not verify completeness or service readiness. "
+                "Unrecognized models use type unknown; cache issues are returned in warnings."
+            ),
             "servers": [{"url": "/"}],
             "responses": {"200": {
-                "description": "Configured models.",
+                "description": "Local models.",
                 "content": {"application/json": {
                     "schema": {"$ref": "#/components/schemas/ModelCatalog"},
                     "example": catalog,
+                }},
+            }, "500": error},
+        }},
+        "/models/configured": {"get": {
+            "tags": ["Models"],
+            "operationId": "configuredModels",
+            "summary": "Show configured models by service",
+            "description": "Current chat, embedding, image generation and image editing configuration; "
+                           "does not check downloads or backend readiness.",
+            "servers": [{"url": "/"}],
+            "responses": {"200": {
+                "description": "Models configured for each service.",
+                "content": {"application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["chat", "embedding", "images"],
+                        "properties": {
+                            "chat": {"type": "string"},
+                            "embedding": {"type": "string"},
+                            "images": {
+                                "type": "object",
+                                "required": ["generate", "edit"],
+                                "properties": {
+                                    "generate": {"type": "string"},
+                                    "edit": {"type": "string"},
+                                },
+                            },
+                        },
+                    },
+                    "example": configured,
                 }},
             }},
         }},
@@ -52,15 +118,17 @@ def openapi_spec(catalog):
         "required": ["object", "data"],
         "properties": {
             "object": {"type": "string", "enum": ["list"]},
+            "warnings": {"type": "array", "items": {"type": "string"}},
             "data": {"type": "array", "items": {
                 "type": "object",
                 "required": ["id", "object", "type", "capabilities"],
                 "properties": {
                     "id": {"type": "string"},
                     "object": {"type": "string", "enum": ["model"]},
-                    "type": {"type": "string", "enum": ["chat", "image"]},
+                    "type": {"type": "string", "enum": ["chat", "image", "embedding", "unknown"]},
+                    "source": {"type": "string", "enum": ["huggingface_cache", "local"]},
                     "capabilities": {"type": "array", "items": {
-                        "type": "string", "enum": ["chat", "generate", "edit"],
+                        "type": "string", "enum": ["chat", "generate", "edit", "embedding"],
                     }},
                 },
             }},
@@ -186,7 +254,7 @@ def openapi_spec(catalog):
         "summary": "Check a service",
         "description": "Choose the interface, chat backend or image backend server.",
         "servers": [
-            {"url": "/", "description": "Chat interface and common API"},
+            {"url": "/", "description": "Chat interface and model management API"},
             {**chat_server, "description": "Chat backend"},
             endpoint("http://{hostname}:{port}/health", settings.images)[1],
         ],
@@ -197,7 +265,7 @@ def openapi_spec(catalog):
         "info": {"title": "AI Server API", "version": "1.0.0",
                  "description": "Chat, image generation/editing and the shared model catalog."},
         "servers": [{"url": "/"}],
-        "tags": [{"name": name} for name in ("Catalog", "Chat", "Images", "Health")],
+        "tags": [{"name": name} for name in ("Models", "Chat", "Images", "Health")],
         "paths": paths,
         "components": {"schemas": {"ModelCatalog": model_schema}},
     }

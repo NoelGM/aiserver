@@ -26,22 +26,57 @@ EDIT_CMD = BIN_DIR / settings.images.edit_command
 class ImageHandler(BaseHTTPRequestHandler):
 
     def send_cors_headers(self):
+        """Add cross-origin headers for supported image API requests.
+
+        Args:
+            None.
+
+        Returns:
+            None: Adds wildcard-origin, method and content-type headers to the
+            pending response without ending its header section.
+        """
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def do_OPTIONS(self):
+        """Respond to a cross-origin preflight request.
+
+        Args:
+            None. Uses the current handler's response stream.
+
+        Returns:
+            None: Sends HTTP 204 with CORS headers and no response body.
+        """
         self.send_response(204)
         self.send_cors_headers()
         self.end_headers()
 
     def do_GET(self):
+        """Handle image service health requests.
+
+        Args:
+            None. Reads the request path from this handler instance.
+
+        Returns:
+            None: Sends JSON health status with HTTP 200, or a JSON error with
+            HTTP 404 for an unknown endpoint.
+        """
         if urlparse(self.path).path == "/health":
             self.send_json(200, {"status": "ok"})
         else:
             self.send_json(404, {"error": "Unknown endpoint"})
 
     def send_json(self, status, data):
+        """Send a JSON response with cross-origin headers.
+
+        Args:
+            status (int): HTTP status code.
+            data: JSON-serializable response payload.
+
+        Returns:
+            None: Writes headers and the UTF-8 JSON body to the client.
+        """
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -51,6 +86,17 @@ class ImageHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        """Generate or edit an image by invoking the configured MFLUX command.
+
+        Args:
+            None. Reads the route and JSON body from the current request. The
+            body accepts prompt, steps and seed; generation also accepts width
+            and height, while editing requires a base64 image or data URL.
+
+        Returns:
+            None: Saves and sends PNG bytes on success, or a JSON error with
+            HTTP 404 for unknown routes, 504 for timeouts, or 500 for failures.
+        """
         route = urlparse(self.path).path
         if route not in (GENERATE_ROUTE, EDIT_ROUTE):
             self.send_json(404, {"error": "Unknown endpoint"})
@@ -176,12 +222,41 @@ class ImageHandler(BaseHTTPRequestHandler):
             self.send_json(500, {"error": str(exc)})
 
     def log_message(self, format, *args):
+        """Record an HTTP request message at INFO level.
+
+        Args:
+            format (str): Percent-style log message template.
+            *args: Values interpolated into the template.
+
+        Returns:
+            None: Logs the formatted message with the client's address.
+        """
         logger.info("%s - %s", self.address_string(), format % args)
 
     def log_error(self, format, *args):
+        """Record an HTTP error message at ERROR level.
+
+        Args:
+            format (str): Percent-style log message template.
+            *args: Values interpolated into the template.
+
+        Returns:
+            None: Logs the formatted error with the client's address.
+        """
         logger.error("%s - %s", self.address_string(), format % args)
 
 def main():
+    """Prepare image storage and start the image API HTTP listener.
+
+    Args:
+        None. Reads MFLUX commands, storage paths and listener configuration.
+
+    Returns:
+        None: Runs the HTTP serving loop until interrupted or stopped.
+
+    Raises:
+        SystemExit: If a configured MFLUX command is missing.
+    """
     configure_logging()
     if not GENERATE_CMD.exists() or not EDIT_CMD.exists():
         raise SystemExit(

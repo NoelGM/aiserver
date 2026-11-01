@@ -20,6 +20,14 @@ if not logger.handlers:
 
 
 def configure_logging():
+    """Configure application logging with the shared level and format.
+
+    Args:
+        None.
+
+    Returns:
+        None: Configures the root logger when it has no existing handlers.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format=LOG_FORMAT,
@@ -45,7 +53,7 @@ settings = Dynaconf(
     ] + [
         Validator(name, must_exist=True, is_type_of=str, len_min=1)
         for name in (
-            "chat.model", "chat.api_url", "images.generate_model",
+            "chat.model", "chat.api_url", "embedding.model", "images.generate_model",
             "images.edit_model", "images.generate_command", "images.edit_command",
             "images.generate_url", "images.edit_url",
         )
@@ -75,6 +83,19 @@ if len({settings.web.port, settings.chat.port, settings.images.port}) != 3:
 
 
 def service_url(template, service, hostname):
+    """Expand and validate a service URL, enclosing IPv6 hosts in brackets.
+
+    Args:
+        template (str): URL containing optional hostname and port placeholders.
+        service: Service settings providing the port.
+        hostname (str): Hostname, IP address or deferred hostname placeholder.
+
+    Returns:
+        str: Expanded HTTP or HTTPS URL.
+
+    Raises:
+        ValueError: If the URL lacks a valid scheme, hostname or path.
+    """
     host = f"[{hostname}]" if ":" in hostname and not hostname.startswith("[") else hostname
     url = template.format(hostname=host, port=service.port)
     parsed = urlparse(url)
@@ -84,6 +105,17 @@ def service_url(template, service, hostname):
 
 
 def image_route(template):
+    """Extract the path of a configured image endpoint.
+
+    Args:
+        template (str): Image API URL with optional hostname and port placeholders.
+
+    Returns:
+        str: Endpoint path using the configured image service port.
+
+    Raises:
+        ValueError: If the URL is invalid or contains a query or fragment.
+    """
     parsed = urlparse(service_url(template, settings.images, "localhost"))
     if parsed.query or parsed.fragment:
         raise ValueError("Image endpoint URLs must not contain query strings or fragments.")
@@ -97,6 +129,15 @@ if GENERATE_ROUTE == EDIT_ROUTE or "/health" in (GENERATE_ROUTE, EDIT_ROUTE):
 
 
 def browser_settings():
+    """Collect the chat and image settings exposed to the browser.
+
+    Args:
+        None.
+
+    Returns:
+        dict: API URLs, chat model and generation defaults; URLs retain the
+        hostname placeholder for resolution by the browser.
+    """
     return {
         "chat": {
             "api_url": service_url(settings.chat.api_url, settings.chat, "{hostname}"),
@@ -120,8 +161,16 @@ logger.info("Configuration loaded and validated successfully.")
 
 
 def main():
+    """Print a configuration field selected through command-line arguments.
+
+    Args:
+        None. Reads the service and field from the process command line.
+
+    Returns:
+        None: Writes the selected value or computed health URL to stdout.
+    """
     parser = argparse.ArgumentParser()
-    parser.add_argument("service", choices=("web", "chat", "images"))
+    parser.add_argument("service", choices=("web", "chat", "images", "embedding"))
     parser.add_argument(
         "field",
         choices=("host", "port", "model", "generate_command", "edit_command", "health_url"),

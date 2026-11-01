@@ -121,7 +121,7 @@ else
     echo "Check log: $MLX_LOG"
 fi
 
-# Start the chat interface and common API
+# Start the chat interface and model management API
 echo "Starting chat server on port $WEB_PORT..."
 nohup "$IMAGE_PYTHON" -u "$ROOT/src/chat_server.py" \
     > "$CHAT_SERVER_LOG" 2>&1 < /dev/null &

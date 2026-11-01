@@ -1,7 +1,9 @@
 # {hostname} uses the browser's hostname; {port} uses the service's port.
 # Use an absolute URL instead when the API is hosted on a different machine.
-# Chat interface and common API listener (chat_server.py).
-# GET /v1/models lists configured models, not download or service status.
+# Chat interface and model management API listener (chat_server.py).
+# GET /models/list discovers local models in the Hugging Face cache and configured directories.
+# GET /models/configured returns the models assigned to chat, embeddings and images.
+# Cached weights may be partial; the catalog does not verify backend readiness.
 # /docs provides Swagger UI; /openapi.json describes all APIs.
 web:
   host: "0.0.0.0"
@@ -13,6 +15,9 @@ chat:
   model: "mlx-community/gpt-oss-20b-OptiQ-4bit"
   api_url: "http://{hostname}:{port}/v1/chat/completions"
   max_tokens: 500
+
+embedding:
+  model: "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 images:
   host: "0.0.0.0"
