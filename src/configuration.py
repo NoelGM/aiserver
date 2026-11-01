@@ -114,6 +114,7 @@ def browser_settings():
         },
     }
 
+
 browser_settings()
 logger.info("Configuration loaded and validated successfully.")
 

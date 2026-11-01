@@ -4,12 +4,13 @@ from functools import partial
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 
+from common_api import CommonAPIMixin
 from configuration import ROOT, browser_settings, configure_logging, settings
 
 logger = logging.getLogger(__name__)
 
 
-class WebHandler(SimpleHTTPRequestHandler):
+class ChatHandler(CommonAPIMixin, SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         logger.info("%s - %s", self.address_string(), format % args)
 
@@ -17,7 +18,8 @@ class WebHandler(SimpleHTTPRequestHandler):
         logger.error("%s - %s", self.address_string(), format % args)
 
     def do_GET(self):
-        if urlparse(self.path).path == "/config.js":
+        route = urlparse(self.path).path
+        if route == "/config.js":
             body = (
                 "window.AISERVER_CONFIG = "
                 + json.dumps(browser_settings(), ensure_ascii=True)
@@ -29,7 +31,7 @@ class WebHandler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
-        elif urlparse(self.path).path == "/health":
+        elif route == "/health":
             body = b'{"status":"ok"}'
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -42,8 +44,8 @@ class WebHandler(SimpleHTTPRequestHandler):
 
 def main():
     configure_logging()
-    handler = partial(WebHandler, directory=str(ROOT / "web"))
-    logger.info("Starting web server on %s:%s", settings.web.host, settings.web.port)
+    handler = partial(ChatHandler, directory=str(ROOT / "web"))
+    logger.info("Starting chat server on %s:%s", settings.web.host, settings.web.port)
     HTTPServer((settings.web.host, settings.web.port), handler).serve_forever()
 
 

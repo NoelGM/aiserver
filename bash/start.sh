@@ -9,7 +9,7 @@ IMAGE_DIR="$ROOT/src"
 IMAGE_PYTHON="$ROOT/.venv/bin/python"
 
 MLX_LOG="$ROOT/logs/mlx.log"
-WEB_LOG="$ROOT/logs/web.log"
+CHAT_SERVER_LOG="$ROOT/logs/chat_server.log"
 IMAGE_LOG="$ROOT/logs/image.log"
 
 mkdir -p "$ROOT/logs" "$ROOT/data/images/inputs" "$ROOT/data/images/outputs"
@@ -82,7 +82,7 @@ for PORT in "$CHAT_PORT" "$WEB_PORT" "$IMAGE_PORT"; do
     for PID in $(lsof -tiTCP:"$PORT" -sTCP:LISTEN); do
         COMMAND=$(ps -p "$PID" -o args=)
         case "$COMMAND" in
-            *mlx_lm.server*|*http.server*|*web_server.py*|*image_server.py*)
+            *mlx_lm.server*|*http.server*|*chat_server.py*|*web_server.py*|*image_server.py*)
                 kill "$PID" || exit 1
                 ;;
             *)
@@ -121,10 +121,10 @@ else
     echo "Check log: $MLX_LOG"
 fi
 
-# Start the web interface
-echo "Starting web interface on port $WEB_PORT..."
-nohup "$IMAGE_PYTHON" -u "$ROOT/src/web_server.py" \
-    > "$WEB_LOG" 2>&1 < /dev/null &
+# Start the chat interface and common API
+echo "Starting chat server on port $WEB_PORT..."
+nohup "$IMAGE_PYTHON" -u "$ROOT/src/chat_server.py" \
+    > "$CHAT_SERVER_LOG" 2>&1 < /dev/null &
 
 # Start the MFLUX image generation/editing server
 echo "Starting MFLUX image server on port $IMAGE_PORT..."
@@ -156,9 +156,9 @@ echo " Startup summary"
 echo "======================================"
 
 if [[ "$WEB_READY" -eq 1 ]]; then
-    echo "Web interface:  OK"
+    echo "Chat server:    OK"
 else
-    echo "Web interface:  CHECK $WEB_LOG"
+    echo "Chat server:    CHECK $CHAT_SERVER_LOG"
 fi
 
 if [[ "$IMAGE_READY" -eq 1 ]]; then
@@ -179,7 +179,7 @@ echo "iPad URL: http://$IP:$WEB_PORT"
 echo
 echo "Logs:"
 echo "  Chat:   $MLX_LOG"
-echo "  Web:    $WEB_LOG"
+echo "  Chat server: $CHAT_SERVER_LOG"
 echo "  Images: $IMAGE_LOG"
 echo
 

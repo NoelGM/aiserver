@@ -16,7 +16,7 @@ for PORT in "$CHAT_PORT" "$WEB_PORT" "$IMAGE_PORT"; do
     for PID in $(lsof -tiTCP:"$PORT" -sTCP:LISTEN); do
         COMMAND=$(ps -p "$PID" -o args=)
         case "$COMMAND" in
-            *mlx_lm.server*|*http.server*|*web_server.py*|*image_server.py*)
+            *mlx_lm.server*|*http.server*|*chat_server.py*|*web_server.py*|*image_server.py*)
                 echo "Stopping service on port $PORT (PID $PID)..."
                 kill "$PID" || exit 1
                 ;;
